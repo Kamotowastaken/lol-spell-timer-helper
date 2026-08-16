@@ -1,0 +1,8 @@
+# runtime output
+spell_timers.txt
+
+# unrelated media
+*.mp4
+
+# logs
+*.log
