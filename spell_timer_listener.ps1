@@ -24,8 +24,6 @@ public static class ChatHook
     private static bool _ctrlDown = false;
     private static bool _shiftDown = false;
     private static bool _ctrlMode = false;
-    private static bool _injecting = false;
-    private static int _injectUntil = 0;
     private static EventWaitHandle _typingFlag;
 
     private const int WH_KEYBOARD_LL = 13;
@@ -60,30 +58,6 @@ public static class ChatHook
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-
-    private const uint INPUT_KEYBOARD = 1;
-    private const uint KEYEVENTF_KEYUP = 0x0002;
-    private const uint KEYEVENTF_SCANCODE = 0x0008;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct INPUT
-    {
-        public uint type;
-        public KEYBDINPUT ki;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KEYBDINPUT
-    {
-        public ushort wVk;
-        public ushort wScan;
-        public uint dwFlags;
-        public uint time;
-        public IntPtr dwExtraInfo;
-    }
-
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
@@ -111,36 +85,12 @@ public static class ChatHook
         catch { return false; }
     }
 
-    private static INPUT MakeKey(ushort scan, uint flags)
-    {
-        INPUT i = new INPUT();
-        i.type = INPUT_KEYBOARD;
-        i.ki.wVk = 0;
-        i.ki.wScan = scan;
-        i.ki.dwFlags = flags | KEYEVENTF_SCANCODE;
-        i.ki.time = 0;
-        i.ki.dwExtraInfo = IntPtr.Zero;
-        return i;
-    }
-
-    private static void InjectCtrlDigit(int d)
-    {
-        ushort sc = d <= 9 ? (ushort)(0x02 + d - 1) : (ushort)0x0B;
-        INPUT[] inputs = new INPUT[4];
-        inputs[0] = MakeKey(0x1D, 0);
-        inputs[1] = MakeKey(sc, 0);
-        inputs[2] = MakeKey(sc, KEYEVENTF_KEYUP);
-        inputs[3] = MakeKey(0x1D, KEYEVENTF_KEYUP);
-        SendInput(4, inputs, Marshal.SizeOf(typeof(INPUT)));
-    }
-
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_KEYUP))
         {
             KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
             bool down = (wParam == (IntPtr)WM_KEYDOWN);
-            bool swallow = false;
             if (k.vkCode == VK_CONTROL) { _ctrlDown = down; }
             else if (k.vkCode == VK_SHIFT) { _shiftDown = down; }
             if (_typingFlag != null && _typingFlag.WaitOne(0)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
@@ -208,22 +158,16 @@ public static class ChatHook
                 if (k.vkCode >= 0x31 && k.vkCode <= 0x35) { d = (int)(k.vkCode - 0x30); }
                 else if (k.vkCode >= 0x36 && k.vkCode <= 0x39) { d = (int)(k.vkCode - 0x30); }
                 else if (k.vkCode == 0x30) { d = 10; }
-                if (_injecting && Environment.TickCount >= _injectUntil) { _injecting = false; }
                 if (d != 0)
                 {
-                    if (_injecting && Environment.TickCount < _injectUntil)
+                    if (_ctrlMode && !_ctrlDown)
                     {
-                        // injected echo — ignore
+                        _pending1 = 0;
+                        _pending2 = 0;
+                        _pending3 = 0;
                     }
                     else
                     {
-                        if (_ctrlMode && !_ctrlDown)
-                        {
-                            _injecting = true;
-                            _injectUntil = Environment.TickCount + 200;
-                            InjectCtrlDigit(d);
-                            swallow = true;
-                        }
                         if (_pending1 == 0) { _pending1 = d; }
                         else if (_pending2 == 0) { _pending2 = d; }
                         else { _pending3 = d; }
@@ -237,7 +181,6 @@ public static class ChatHook
                 }
             }
         }
-        if (swallow) return (IntPtr)1;
         return CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 

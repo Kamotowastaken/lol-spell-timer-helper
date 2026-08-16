@@ -17,7 +17,7 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
   - `Ctrl+Shift+V` — open chat, type timers, Ctrl+A/Ctrl+C (fills the game's in-game clipboard), send.
   - `Ctrl+V` — open chat, paste from the game clipboard, send.
 - **Manual recording**: `Enter → digit(s) → Enter` in game chat.
-- **Ctrl+number mode** (toggle: `Ctrl+Shift+C`): when enabled, plain digits in chat are converted to Ctrl+digit — pressing `5` records enemy 5 while the hook injects Ctrl so the game swallows the keypress and nothing is typed into the chat box.
+- **Ctrl+number mode** (toggle: `Ctrl+Shift+C`): when enabled, digits in chat are only recorded when pressed with Ctrl (e.g. `Ctrl+5`), so nothing is typed into the chat box — the game swallows Ctrl+number by default. The hook still sees the number keydown, so recording works without polluting chat.
 - **Output format**: space-separated `posMMSS` sorted by ready time, e.g. `jg2904 sp2900 top2837 ad2740`.
 - **Game-only influence**: the helper is a pure pass-through when the game is not focused.
 - **Self-managing processes**: starting either the listener or the helper starts the other if missing; quitting the listener (press `Q`) stops the helper.
