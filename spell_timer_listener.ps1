@@ -473,7 +473,7 @@ while ($true) {
 
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
-    Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}  gold {2}" -f [math]::Floor($gt / 60), ($gt % 60), $data.activePlayer.currentGold) -ForegroundColor Cyan
+    Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
     Write-Host ("keys: 1-5 = enemy Flash, 11 = clear Flash, 555 = cosmic toggle (support), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
