@@ -21,21 +21,12 @@ public static class ChatHook
     private static int _pending1 = 0;
     private static int _pending2 = 0;
     private static int _pending3 = 0;
-    private static bool _ctrlDown = false;
-    private static bool _shiftDown = false;
-    private static bool _ctrlMode = false;
     private static EventWaitHandle _typingFlag;
 
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
-    private const int WM_KEYUP = 0x0101;
     private const int VK_RETURN = 0x0D;
     private const int VK_ESCAPE = 0x1B;
-    private const int VK_CONTROL = 0x11;
-    private const int VK_SHIFT = 0x10;
-    private const int VK_C = 0x43;
-
-    public static bool CtrlMode { get { return _ctrlMode; } }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -87,16 +78,13 @@ public static class ChatHook
 
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_KEYUP))
+        if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
         {
             KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-            bool down = (wParam == (IntPtr)WM_KEYDOWN);
-            if (k.vkCode == VK_CONTROL) { _ctrlDown = down; }
-            else if (k.vkCode == VK_SHIFT) { _shiftDown = down; }
             if (_typingFlag != null && _typingFlag.WaitOne(0)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
             if (!IsGameFocused())
             {
-                if (down && (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE))
+                if (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE)
                 {
                     _chatOpen = false;
                     _pending1 = 0;
@@ -105,54 +93,43 @@ public static class ChatHook
                 }
                 return CallNextHookEx(_hook, nCode, wParam, lParam);
             }
-            if (down && _ctrlDown && _shiftDown && k.vkCode == VK_C)
+            if (k.vkCode == VK_RETURN)
             {
-                _ctrlMode = !_ctrlMode;
-                Events.Enqueue(200);
-            }
-            else if (k.vkCode == VK_RETURN)
-            {
-                if (down)
+                if (_chatOpen)
                 {
-                    if (_chatOpen)
+                    if (_pending1 != 0)
                     {
-                        if (_pending1 != 0)
+                        if (_pending2 == 0)
                         {
-                            if (_pending2 == 0)
-                            {
-                                Events.Enqueue(_pending1);
-                            }
-                            else if (_pending3 == 0)
-                            {
-                                if (_pending1 == _pending2) { Events.Enqueue(-_pending1); }
-                            }
-                            else
-                            {
-                                if (_pending1 == _pending2 && _pending2 == _pending3) { Events.Enqueue(100 + _pending1); }
-                            }
+                            Events.Enqueue(_pending1);
                         }
-                        _pending1 = 0;
-                        _pending2 = 0;
-                        _pending3 = 0;
-                        _chatOpen = false;
+                        else if (_pending3 == 0)
+                        {
+                            if (_pending1 == _pending2) { Events.Enqueue(-_pending1); }
+                        }
+                        else
+                        {
+                            if (_pending1 == _pending2 && _pending2 == _pending3) { Events.Enqueue(100 + _pending1); }
+                        }
                     }
-                    else
-                    {
-                        _chatOpen = true;
-                    }
+                    _pending1 = 0;
+                    _pending2 = 0;
+                    _pending3 = 0;
+                    _chatOpen = false;
+                }
+                else
+                {
+                    _chatOpen = true;
                 }
             }
             else if (k.vkCode == VK_ESCAPE)
             {
-                if (down)
-                {
-                    _chatOpen = false;
-                    _pending1 = 0;
-                    _pending2 = 0;
-                    _pending3 = 0;
-                }
+                _chatOpen = false;
+                _pending1 = 0;
+                _pending2 = 0;
+                _pending3 = 0;
             }
-            else if (down && _chatOpen)
+            else if (_chatOpen)
             {
                 int d = 0;
                 if (k.vkCode >= 0x31 && k.vkCode <= 0x35) { d = (int)(k.vkCode - 0x30); }
@@ -160,18 +137,9 @@ public static class ChatHook
                 else if (k.vkCode == 0x30) { d = 10; }
                 if (d != 0)
                 {
-                    if (_ctrlMode && !_ctrlDown)
-                    {
-                        _pending1 = 0;
-                        _pending2 = 0;
-                        _pending3 = 0;
-                    }
-                    else
-                    {
-                        if (_pending1 == 0) { _pending1 = d; }
-                        else if (_pending2 == 0) { _pending2 = d; }
-                        else { _pending3 = d; }
-                    }
+                    if (_pending1 == 0) { _pending1 = d; }
+                    else if (_pending2 == 0) { _pending2 = d; }
+                    else { _pending3 = d; }
                 }
                 else
                 {
@@ -463,8 +431,6 @@ while ($true) {
                 $playerHaste[$p.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
                 Add-Event ("{0} Cosmic Insight: {1} (total haste {2})" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste) -Color Magenta
             }
-        } elseif ($digit -eq 200) {
-            Add-Event ("Ctrl+number mode: {0}" -f $(if ([ChatHook]::CtrlMode) { "ON" } else { "OFF" })) -Color Magenta
         } elseif ($digit -lt 0) {
             $d = -$digit
             if ($d -ge 1 -and $d -le 5) {
@@ -507,10 +473,8 @@ while ($true) {
 
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
-    $modeStr = ""
-    if ([ChatHook]::CtrlMode) { $modeStr = "  [Ctrl+num]" }
-    Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}  gold {2}{3}" -f [math]::Floor($gt / 60), ($gt % 60), $data.activePlayer.currentGold, $modeStr) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear Flash, 555 = cosmic toggle (support), Ctrl+Shift+C = ctrl-number mode, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}  gold {2}" -f [math]::Floor($gt / 60), ($gt % 60), $data.activePlayer.currentGold) -ForegroundColor Cyan
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear Flash, 555 = cosmic toggle (support), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
