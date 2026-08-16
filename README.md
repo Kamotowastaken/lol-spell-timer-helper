@@ -12,6 +12,7 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 
 - **Flash-only tracking**: digits `1-5` record enemy Flash (slot auto-detected per champion), double digit (e.g. `11`) clears it.
 - **Cosmic Insight toggle**: `Enter → 555 → Enter` in game chat toggles Cosmic Insight for the support (enemy 5); `111`-`555` toggle enemies 1-5 respectively.
+- **Haste-aware cooldowns**: timers account for haste from Ionian Boots (+10), Crimson Lucidity (+20), and Cosmic Insight (+18).
 - **In-game hotkeys** (game focused):
   - `Ctrl+Shift+V` — open chat, type timers, Ctrl+A/Ctrl+C (fills the game's in-game clipboard), send.
   - `Ctrl+V` — open chat, paste from the game clipboard, send.
