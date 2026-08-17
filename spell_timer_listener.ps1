@@ -251,15 +251,15 @@ function Update-Clipboard {
         }
     }
     foreach ($name in $customTimers.Keys) {
-        $ct = $customTimers[$name]
-        if ($ct.seconds -le $script:gameTime) { continue }
+        $rt = $customTimers[$name]
+        if ($rt -le $script:gameTime) { continue }
         $p = $script:enemyByName[$name]
         if ($null -eq $p) { continue }
         $ab = $posAbbrev[$p.position]
         if ($null -eq $ab) { $ab = "?" }
-        $m = [math]::Floor($ct.time / 100)
-        $s = $ct.time % 100
-        $items += [pscustomobject]@{ T = $ct.seconds; S = ("{0:00}{1:00}{2}" -f $m, $s, $ab) }
+        $m = [math]::Floor($rt / 60)
+        $s = $rt % 60
+        $items += [pscustomobject]@{ T = $rt; S = ("{0:00}{1:00}{2}" -f $m, $s, $ab) }
     }
     $items = $items | Sort-Object T -Descending
     $text = ($items | ForEach-Object { $_.S }) -join ' '
@@ -304,6 +304,17 @@ function Use-Spell {
         Add-Event ("{0} {1} re-used - timer -10s, ready {2:00}:{3:00}" -f $Player.summonerName, $spell, [math]::Floor($ready / 60), ($ready % 60)) -Color Yellow
         Update-Clipboard
         return
+    }
+    if ($customTimers.ContainsKey($Player.summonerName)) {
+        $crt = $customTimers[$Player.summonerName]
+        if ($crt -gt $GameTime) {
+            $crt -= 10
+            $customTimers[$Player.summonerName] = $crt
+            Add-Event ("{0} {1} re-used - timer -10s, ready {2:00}:{3:00}" -f $Player.summonerName, $spell, [math]::Floor($crt / 60), ($crt % 60)) -Color Yellow
+            Update-Clipboard
+            return
+        }
+        $customTimers.Remove($Player.summonerName)
     }
     $haste = Get-Haste $Player
     $bootsStr = ""
@@ -462,8 +473,13 @@ while ($true) {
             $cs = $ctime % 100
             if ($idx -lt $enemies.Count -and $cm -le 59 -and $cs -le 59) {
                 $p = $enemies[$idx]
-                $customTimers[$p.summonerName] = @{ time = $ctime; seconds = $cm * 60 + $cs }
-                Add-Event ("{0} custom timer: {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
+                $flashSlot = Get-FlashSlot $p
+                if ($flashSlot -gt 0) {
+                    $key = "$($p.summonerName)|$flashSlot"
+                    if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
+                }
+                $customTimers[$p.summonerName] = $cm * 60 + $cs
+                Add-Event ("{0} Flash timer set manually: ready {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
                 Update-Clipboard
             } else {
                 Add-Event ("Invalid custom timer: {0}" -f $input) -Color DarkGray
@@ -494,7 +510,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = custom timer (pos+MMSS), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual Flash timer (pos+MMSS), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
@@ -505,13 +521,12 @@ while ($true) {
         $cd = if ($flashSlot -gt 0) { Get-SpellCD -Key "$($p.summonerName)|$flashSlot" -GameTime $gameTime } else { -1 }
         $d = if ($cd -lt 0) { "-" } else { "Flash {0}" -f (Format-CD $cd) }
         if ($customTimers.ContainsKey($p.summonerName)) {
-            $ct = $customTimers[$p.summonerName]
-            $cm = [math]::Floor($ct.time / 100)
-            $cs = $ct.time % 100
-            if ($ct.seconds -le $gameTime) {
-                $custStr = "CUST READY"
+            $crt = $customTimers[$p.summonerName]
+            $remaining = $crt - $gameTime
+            if ($remaining -le 0) {
+                $custStr = "Flash READY"
             } else {
-                $custStr = "CUST {0:00}:{1:00}" -f $cm, $cs
+                $custStr = "Flash {0}" -f (Format-CD $remaining)
             }
             $d = if ($d -eq "-") { $custStr } else { "$d  $custStr" }
         }
