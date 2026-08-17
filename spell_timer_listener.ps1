@@ -295,17 +295,26 @@ function Update-Clipboard {
 
 function Get-FlashSlot {
     param($Player)
-    if ($Player.summonerSpells.summonerSpellOne.displayName -eq "Flash") { return 1 }
-    if ($Player.summonerSpells.summonerSpellTwo.displayName -eq "Flash") { return 2 }
+    if ($Player.summonerSpells.summonerSpellOne.displayName -eq "Flash" -or $Player.summonerSpells.summonerSpellOne.displayName -eq "Hextech Flashtraption") { return 1 }
+    if ($Player.summonerSpells.summonerSpellTwo.displayName -eq "Flash" -or $Player.summonerSpells.summonerSpellTwo.displayName -eq "Hextech Flashtraption") { return 2 }
     return 0
 }
 
 function Use-Spell {
     param($Player, [int]$SpellIdx, [double]$GameTime)
     $spell = if ($SpellIdx -eq 1) { $Player.summonerSpells.summonerSpellOne.displayName } else { $Player.summonerSpells.summonerSpellTwo.displayName }
+    if ($spell -eq "Hextech Flashtraption") { $spell = "Flash" }
     $base = $baseCD[$spell]
     if ($null -eq $base) {
         Add-Event ("{0} used {1} (no base CD known)" -f $Player.summonerName, $spell) -Color DarkGray
+        return
+    }
+    $key = "$($Player.summonerName)|$SpellIdx"
+    if ($spellState.ContainsKey($key) -and $spellState[$key].readyTime -gt $GameTime) {
+        $ready = $spellState[$key].readyTime - 10
+        $spellState[$key] = @{ readyTime = $ready; wasOnCD = $true; spellName = $spell }
+        Add-Event ("{0} {1} re-used - timer -10s, ready {2:00}:{3:00}" -f $Player.summonerName, $spell, [math]::Floor($ready / 60), ($ready % 60)) -Color Yellow
+        Update-Clipboard
         return
     }
     $haste = Get-Haste $Player
