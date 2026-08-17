@@ -252,6 +252,7 @@ function Update-Clipboard {
     }
     foreach ($name in $customTimers.Keys) {
         $ct = $customTimers[$name]
+        if ($ct.seconds -le $script:gameTime) { continue }
         $p = $script:enemyByName[$name]
         if ($null -eq $p) { continue }
         $ab = $posAbbrev[$p.position]
@@ -507,7 +508,11 @@ while ($true) {
             $ct = $customTimers[$p.summonerName]
             $cm = [math]::Floor($ct.time / 100)
             $cs = $ct.time % 100
-            $custStr = "CUST {0:00}:{1:00}" -f $cm, $cs
+            if ($ct.seconds -le $gameTime) {
+                $custStr = "CUST READY"
+            } else {
+                $custStr = "CUST {0:00}:{1:00}" -f $cm, $cs
+            }
             $d = if ($d -eq "-") { $custStr } else { "$d  $custStr" }
         }
         $c = if ($cd -gt 0) { "Yellow" } else { "Green" }
