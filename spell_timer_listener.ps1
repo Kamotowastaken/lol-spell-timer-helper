@@ -13,14 +13,12 @@ using System.Collections.Concurrent;
 
 public static class ChatHook
 {
-    public static ConcurrentQueue<int> Events = new ConcurrentQueue<int>();
+    public static ConcurrentQueue<string> Events = new ConcurrentQueue<string>();
     private static IntPtr _hook = IntPtr.Zero;
     private static Thread _thread;
     private static uint _threadId;
     private static bool _chatOpen = false;
-    private static int _pending1 = 0;
-    private static int _pending2 = 0;
-    private static int _pending3 = 0;
+    private static System.Text.StringBuilder _pending = new System.Text.StringBuilder();
     private static EventWaitHandle _typingFlag;
 
     private const int WH_KEYBOARD_LL = 13;
@@ -87,9 +85,7 @@ public static class ChatHook
                 if (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE)
                 {
                     _chatOpen = false;
-                    _pending1 = 0;
-                    _pending2 = 0;
-                    _pending3 = 0;
+                    _pending.Length = 0;
                 }
                 return CallNextHookEx(_hook, nCode, wParam, lParam);
             }
@@ -97,24 +93,11 @@ public static class ChatHook
             {
                 if (_chatOpen)
                 {
-                    if (_pending1 != 0)
+                    if (_pending.Length > 0)
                     {
-                        if (_pending2 == 0)
-                        {
-                            Events.Enqueue(_pending1);
-                        }
-                        else if (_pending3 == 0)
-                        {
-                            if (_pending1 == _pending2) { Events.Enqueue(-_pending1); }
-                        }
-                        else
-                        {
-                            if (_pending1 == _pending2 && _pending2 == _pending3) { Events.Enqueue(100 + _pending1); }
-                        }
+                        Events.Enqueue(_pending.ToString());
                     }
-                    _pending1 = 0;
-                    _pending2 = 0;
-                    _pending3 = 0;
+                    _pending.Length = 0;
                     _chatOpen = false;
                 }
                 else
@@ -125,27 +108,20 @@ public static class ChatHook
             else if (k.vkCode == VK_ESCAPE)
             {
                 _chatOpen = false;
-                _pending1 = 0;
-                _pending2 = 0;
-                _pending3 = 0;
+                _pending.Length = 0;
             }
             else if (_chatOpen)
             {
-                int d = 0;
-                if (k.vkCode >= 0x31 && k.vkCode <= 0x35) { d = (int)(k.vkCode - 0x30); }
-                else if (k.vkCode >= 0x36 && k.vkCode <= 0x39) { d = (int)(k.vkCode - 0x30); }
-                else if (k.vkCode == 0x30) { d = 10; }
-                if (d != 0)
+                char c = '\0';
+                if (k.vkCode >= 0x31 && k.vkCode <= 0x39) { c = (char)k.vkCode; }
+                else if (k.vkCode == 0x30) { c = '0'; }
+                if (c != '\0')
                 {
-                    if (_pending1 == 0) { _pending1 = d; }
-                    else if (_pending2 == 0) { _pending2 = d; }
-                    else { _pending3 = d; }
+                    _pending.Append(c);
                 }
                 else
                 {
-                    _pending1 = 0;
-                    _pending2 = 0;
-                    _pending3 = 0;
+                    _pending.Length = 0;
                 }
             }
         }
@@ -201,6 +177,7 @@ $positionOrder = @("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY")
 $posAbbrev = @{ "TOP" = "top"; "JUNGLE" = "jg"; "MIDDLE" = "mid"; "BOTTOM" = "ad"; "UTILITY" = "sp" }
 
 $spellState = @{}
+$customTimers = @{}
 $cosmic = @{}
 $eventLog = New-Object System.Collections.ArrayList
 $playerHaste = @{}
@@ -270,8 +247,18 @@ function Update-Clipboard {
             if ($null -eq $ab) { $ab = "?" }
             $m = [math]::Floor($st.readyTime / 60)
             $s = [math]::Floor($st.readyTime % 60)
-            $items += [pscustomobject]@{ T = $st.readyTime; S = ("{0}{1:00}{2:00}" -f $ab, $m, $s) }
+            $items += [pscustomobject]@{ T = $st.readyTime; S = ("{0:00}{1:00}{2}" -f $m, $s, $ab) }
         }
+    }
+    foreach ($name in $customTimers.Keys) {
+        $ct = $customTimers[$name]
+        $p = $script:enemyByName[$name]
+        if ($null -eq $p) { continue }
+        $ab = $posAbbrev[$p.position]
+        if ($null -eq $ab) { $ab = "?" }
+        $m = [math]::Floor($ct.time / 100)
+        $s = $ct.time % 100
+        $items += [pscustomobject]@{ T = $ct.seconds; S = ("{0:00}{1:00}{2}" -f $m, $s, $ab) }
     }
     $items = $items | Sort-Object T -Descending
     $text = ($items | ForEach-Object { $_.S }) -join ' '
@@ -385,9 +372,11 @@ if ($null -ne $script:mmf) {
 }
 
 $waiting = $false
+$misses = 0
 while ($true) {
     $data = Get-Json $dataUrl
     if ($null -eq $data) {
+        $misses++
         if (-not $waiting) {
             $waiting = $true
             Add-Event "Waiting for game data..."
@@ -395,6 +384,10 @@ while ($true) {
             Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
             Write-Host "No live game data. Waiting for a game..." -ForegroundColor Yellow
             Write-Host "Press Q to quit." -ForegroundColor DarkGray
+        } elseif ($misses -ge 10) {
+            $spellState.Clear()
+            $customTimers.Clear()
+            $misses = 0
         }
         try {
             if ([Console]::KeyAvailable) {
@@ -419,18 +412,18 @@ while ($true) {
     foreach ($e in $enemies) { $script:enemyByName[$e.summonerName] = $e }
     Update-Clipboard
 
-    $digit = 0
-    while ([ChatHook]::Events.TryDequeue([ref]$digit)) {
-        if ($digit -ge 1 -and $digit -le 5) {
-            $idx = $digit - 1
+    $input = ""
+    while ([ChatHook]::Events.TryDequeue([ref]$input)) {
+        if ($input -match '^[1-5]$') {
+            $idx = [int]$input - 1
             if ($idx -lt $enemies.Count) {
                 $p = $enemies[$idx]
                 $flashSlot = Get-FlashSlot $p
                 if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
                 else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
             }
-        } elseif ($digit -ge 101 -and $digit -le 105) {
-            $idx = $digit - 101
+        } elseif ($input -match '^([1-5])\1\1$') {
+            $idx = [int]$Matches[1] - 1
             if ($idx -lt $enemies.Count) {
                 $p = $enemies[$idx]
                 $cosmic[$p.summonerName] = -not $cosmic[$p.summonerName]
@@ -440,22 +433,39 @@ while ($true) {
                 $playerHaste[$p.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
                 Add-Event ("{0} Cosmic Insight: {1} (total haste {2})" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste) -Color Magenta
             }
-        } elseif ($digit -lt 0) {
-            $d = -$digit
-            if ($d -ge 1 -and $d -le 5) {
-                $idx = $d - 1
-                if ($idx -lt $enemies.Count) {
-                    $p = $enemies[$idx]
-                    $flashSlot = Get-FlashSlot $p
-                    if ($flashSlot -gt 0) {
-                        $key = "$($p.summonerName)|$flashSlot"
-                        if ($spellState.ContainsKey($key)) {
-                            $spellState.Remove($key)
-                            Add-Event ("{0} Flash timer cleared" -f $p.summonerName) -Color Cyan
-                            Update-Clipboard
-                        }
+        } elseif ($input -match '^([1-5])\1$') {
+            $idx = [int]$Matches[1] - 1
+            if ($idx -lt $enemies.Count) {
+                $p = $enemies[$idx]
+                $flashSlot = Get-FlashSlot $p
+                $cleared = $false
+                if ($flashSlot -gt 0) {
+                    $key = "$($p.summonerName)|$flashSlot"
+                    if ($spellState.ContainsKey($key)) {
+                        $spellState.Remove($key)
+                        Add-Event ("{0} Flash timer cleared" -f $p.summonerName) -Color Cyan
+                        $cleared = $true
                     }
                 }
+                if ($customTimers.ContainsKey($p.summonerName)) {
+                    $customTimers.Remove($p.summonerName)
+                    Add-Event ("{0} custom timer cleared" -f $p.summonerName) -Color Cyan
+                    $cleared = $true
+                }
+                if ($cleared) { Update-Clipboard }
+            }
+        } elseif ($input -match '^([1-5])(\d{4})$') {
+            $idx = [int]$Matches[1] - 1
+            $ctime = [int]$Matches[2]
+            $cm = [math]::Floor($ctime / 100)
+            $cs = $ctime % 100
+            if ($idx -lt $enemies.Count -and $cm -le 59 -and $cs -le 59) {
+                $p = $enemies[$idx]
+                $customTimers[$p.summonerName] = @{ time = $ctime; seconds = $cm * 60 + $cs }
+                Add-Event ("{0} custom timer: {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
+                Update-Clipboard
+            } else {
+                Add-Event ("Invalid custom timer: {0}" -f $input) -Color DarkGray
             }
         }
     }
@@ -483,7 +493,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear Flash, 555 = cosmic toggle (support), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = custom timer (pos+MMSS), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
@@ -493,6 +503,13 @@ while ($true) {
         $flashSlot = Get-FlashSlot $p
         $cd = if ($flashSlot -gt 0) { Get-SpellCD -Key "$($p.summonerName)|$flashSlot" -GameTime $gameTime } else { -1 }
         $d = if ($cd -lt 0) { "-" } else { "Flash {0}" -f (Format-CD $cd) }
+        if ($customTimers.ContainsKey($p.summonerName)) {
+            $ct = $customTimers[$p.summonerName]
+            $cm = [math]::Floor($ct.time / 100)
+            $cs = $ct.time % 100
+            $custStr = "CUST {0:00}:{1:00}" -f $cm, $cs
+            $d = if ($d -eq "-") { $custStr } else { "$d  $custStr" }
+        }
         $c = if ($cd -gt 0) { "Yellow" } else { "Green" }
         $hStr = if ($haste -lt 0) { "-" } else { $haste }
         $boots = if ($null -ne $snap) { $snap.Boots } else { "" }
