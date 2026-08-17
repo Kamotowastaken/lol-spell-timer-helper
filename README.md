@@ -12,6 +12,7 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 
 - **Flash-only tracking**: digits `1-5` record enemy Flash (slot auto-detected per champion). Hextech Flashtraption is treated as Flash. Re-recording a Flash that is still on cooldown shaves 10s off the timer instead of resetting it.
 - **Manual Flash timers**: `Enter → 12158 → Enter` sets the Flash timer for enemy 1 (top) to ready at 21:58 — for teammate pings or correcting the auto timer. Position (1-5) + MMSS; sub-10-minute times need a leading zero (`10530` = 05:30). Replaces the auto timer; re-recording shaves 10s like a normal re-use.
+- **Use-time input**: `Enter → 1208ad → Enter` records that the enemy AD used Flash at 12:08 — the script adds Flash's cooldown (with that player's haste) and sets the ready time automatically. Abbreviations: `top`, `jg`, `mid`, `ad`, `sp`.
 - **Cosmic Insight toggle**: `Enter → 555 → Enter` in game chat toggles Cosmic Insight for the support (enemy 5); `111`-`555` toggle enemies 1-5 respectively.
 - **Haste-aware cooldowns**: timers account for haste from Ionian Boots (+10), Crimson Lucidity (+20), and Cosmic Insight (+18).
 - **In-game hotkeys** (game focused):
@@ -31,6 +32,7 @@ Open chat with `Enter`, type one of the following, then `Enter` again:
 | `11` | Clear enemy 1's Flash and custom timers |
 | `555` | Toggle Cosmic Insight for enemy 5 (support) |
 | `12158` | Manual Flash timer: enemy 1 (top) ready at 21:58 |
+| `1208ad` | Enemy AD used Flash at 12:08 — ready time computed automatically |
 
 Anything else is ignored (sent to chat as a normal message).
 

@@ -115,6 +115,7 @@ public static class ChatHook
                 char c = '\0';
                 if (k.vkCode >= 0x31 && k.vkCode <= 0x39) { c = (char)k.vkCode; }
                 else if (k.vkCode == 0x30) { c = '0'; }
+                else if (k.vkCode >= 0x41 && k.vkCode <= 0x5A) { c = (char)k.vkCode; }
                 if (c != '\0')
                 {
                     _pending.Append(c);
@@ -466,6 +467,28 @@ while ($true) {
                 }
                 if ($cleared) { Update-Clipboard }
             }
+        } elseif ($input -match '^(\d{4})(top|jg|mid|ad|sp)$') {
+            $utime = [int]$Matches[1]
+            $um = [math]::Floor($utime / 100)
+            $us = $utime % 100
+            $ab = $Matches[2].ToLower()
+            if ($um -le 59 -and $us -le 59) {
+                $p = $enemies | Where-Object { $posAbbrev[$_.position] -eq $ab } | Select-Object -First 1
+                if ($null -ne $p) {
+                    $flashSlot = Get-FlashSlot $p
+                    if ($flashSlot -gt 0) {
+                        $useTime = $um * 60 + $us
+                        $haste = Get-Haste $p
+                        $total = 300 / (1 + $haste / 100.0)
+                        $ready = $useTime + $total
+                        $key = "$($p.summonerName)|$flashSlot"
+                        if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
+                        $customTimers[$p.summonerName] = $ready
+                        Add-Event ("{0} Flash used at {1:00}:{2:00} - ready {3:00}:{4:00} (haste {5})" -f $p.summonerName, $um, $us, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Cyan
+                        Update-Clipboard
+                    }
+                }
+            }
         } elseif ($input -match '^([1-5])(\d{4})$') {
             $idx = [int]$Matches[1] - 1
             $ctime = [int]$Matches[2]
@@ -510,7 +533,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual Flash timer (pos+MMSS), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
