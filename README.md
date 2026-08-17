@@ -4,23 +4,35 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 
 ## How it works
 
-- **Listener** (`spell_timer_listener.ps1`) polls the LoL Live Client API (`https://127.0.0.1:2999/liveclientdata/allgamedata`) and shows a live table of enemy Flash timers.
+- **Listener** (`spell_timer_listener.ps1`) polls the LoL Live Client API (`https://127.0.0.1:2999/liveclientdata/allgamedata`) and shows a live table of enemy Flash timers. A low-level keyboard hook watches in-game chat: whatever you type between the two Enter keys is interpreted as a command (see Chat input).
 - **Helper** (`spell_timer_helper.exe`) is a driver-level keyboard/mouse injector built on the [Interception](https://github.com/oblitum/Interception) driver. It types the timers into the game chat using hardware-level input, which works where normal SendKeys/clipboard paste does not (the game's in-game clipboard is separate from the Windows clipboard).
 - Timers flow from listener to helper through a shared memory-mapped file (`SpellTimersMMF`), with a disk fallback (`spell_timers.txt`).
 
 ## Features
 
-- **Flash-only tracking**: digits `1-5` record enemy Flash (slot auto-detected per champion), double digit (e.g. `11`) clears it and any custom timer for that enemy.
+- **Flash-only tracking**: digits `1-5` record enemy Flash (slot auto-detected per champion). Hextech Flashtraption is treated as Flash. Re-recording a Flash that is still on cooldown shaves 10s off the timer instead of resetting it.
 - **Custom timers**: `Enter → 12158 → Enter` sets a custom timer for enemy 1 (top) at 21:58 — position (1-5) + MMSS; sub-10-minute times need a leading zero (`10530` = 05:30).
 - **Cosmic Insight toggle**: `Enter → 555 → Enter` in game chat toggles Cosmic Insight for the support (enemy 5); `111`-`555` toggle enemies 1-5 respectively.
 - **Haste-aware cooldowns**: timers account for haste from Ionian Boots (+10), Crimson Lucidity (+20), and Cosmic Insight (+18).
 - **In-game hotkeys** (game focused):
   - `Ctrl+Shift+V` — open chat, type timers, Ctrl+A/Ctrl+C (fills the game's in-game clipboard), send.
   - `Ctrl+V` — open chat, paste from the game clipboard, send.
-- **Manual recording**: `Enter → digit(s) → Enter` in game chat.
 - **Output format**: space-separated `MMSSpos` sorted by time descending, e.g. `2904jg 2900sp 2837top 2740ad`.
 - **Game-only influence**: the helper is a pure pass-through when the game is not focused.
 - **Self-managing processes**: starting either the listener or the helper starts the other if missing; quitting the listener (press `Q`) stops the helper.
+
+## Chat input
+
+Open chat with `Enter`, type one of the following, then `Enter` again:
+
+| Input | Meaning |
+|-------|---------|
+| `5` | Record enemy 5's Flash (starts its cooldown timer) |
+| `11` | Clear enemy 1's Flash and custom timers |
+| `555` | Toggle Cosmic Insight for enemy 5 (support) |
+| `12158` | Custom timer: enemy 1 (top) ready at 21:58 |
+
+Anything else is ignored (sent to chat as a normal message).
 
 ## Requirements
 
@@ -33,7 +45,7 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 
 1. Install the Interception driver and reboot.
 2. Double-click `start_listener.cmd` (or run `spell_timer_helper.exe` — it starts the listener too).
-3. In game, press `Ctrl+Shift+V` to send the timers to chat, or record manually with `Enter → digit → Enter`.
+3. In game, press `Ctrl+Shift+V` to send the timers to chat, or record manually with `Enter → digit(s) → Enter` (see Chat input).
 4. Press `Q` in the listener window to quit (stops the helper as well).
 
 ## Layout
