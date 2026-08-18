@@ -117,6 +117,7 @@ public static class ChatHook
                 char c = '\0';
                 if (k.vkCode >= 0x31 && k.vkCode <= 0x39) { c = (char)k.vkCode; }
                 else if (k.vkCode == 0x30) { c = '0'; }
+                else if (k.vkCode >= 0x60 && k.vkCode <= 0x69) { c = (char)(k.vkCode - 0x30); }
                 else if (k.vkCode >= 0x41 && k.vkCode <= 0x5A) { c = (char)k.vkCode; }
                 else if (k.vkCode == 0x20) { c = ' '; }
                 if (c != '\0')
