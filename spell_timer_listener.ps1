@@ -333,6 +333,96 @@ function Use-Spell {
     Update-Clipboard
 }
 
+function Process-Token([string]$tok) {
+    if ($tok -match '^[1-5]$') {
+        $idx = [int]$tok - 1
+        if ($idx -lt $enemies.Count) {
+            $p = $enemies[$idx]
+            $flashSlot = Get-FlashSlot $p
+            if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
+            else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
+        }
+    } elseif ($tok -match '^([1-5])\1\1$') {
+        $idx = [int]$Matches[1] - 1
+        if ($idx -lt $enemies.Count) {
+            $p = $enemies[$idx]
+            $cosmic[$p.summonerName] = -not $cosmic[$p.summonerName]
+            $haste = Get-Haste $p
+            $bootsStr = ""
+            foreach ($it in $p.items) { if ($bootsHaste.ContainsKey([int]$it.itemID)) { $bootsStr += " $($it.displayName)" } }
+            $playerHaste[$p.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
+            Add-Event ("{0} Cosmic Insight: {1} (total haste {2})" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste) -Color Magenta
+        }
+    } elseif ($tok -match '^([1-5])\1$') {
+        $idx = [int]$Matches[1] - 1
+        if ($idx -lt $enemies.Count) {
+            $p = $enemies[$idx]
+            $flashSlot = Get-FlashSlot $p
+            $cleared = $false
+            if ($flashSlot -gt 0) {
+                $key = "$($p.summonerName)|$flashSlot"
+                if ($spellState.ContainsKey($key)) {
+                    $spellState.Remove($key)
+                    Add-Event ("{0} Flash timer cleared" -f $p.summonerName) -Color Cyan
+                    $cleared = $true
+                }
+            }
+            if ($customTimers.ContainsKey($p.summonerName)) {
+                $customTimers.Remove($p.summonerName)
+                Add-Event ("{0} custom timer cleared" -f $p.summonerName) -Color Cyan
+                $cleared = $true
+            }
+            if ($cleared) { Update-Clipboard }
+        }
+    } elseif ($tok -match '^(\d{4})(top|jg|mid|ad|sp)$') {
+        $utime = [int]$Matches[1]
+        $um = [math]::Floor($utime / 100)
+        $us = $utime % 100
+        $ab = $Matches[2].ToLower()
+        if ($um -gt 59 -or $us -gt 59) {
+            Add-Event ("Invalid use time: {0}" -f $tok) -Color DarkGray
+        } else {
+            $p = $enemies | Where-Object { $posAbbrev[$_.position] -eq $ab } | Select-Object -First 1
+            if ($null -eq $p) {
+                Add-Event ("No {0} enemy found" -f $ab) -Color DarkGray
+            } else {
+                $flashSlot = Get-FlashSlot $p
+                if ($flashSlot -gt 0) {
+                    $key = "$($p.summonerName)|$flashSlot"
+                    if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
+                }
+                $useTime = $um * 60 + $us
+                $haste = Get-Haste $p
+                $total = 300 / (1 + $haste / 100.0)
+                $ready = $useTime + $total
+                $customTimers[$p.summonerName] = $ready
+                Add-Event ("{0} Flash used at {1:00}:{2:00} - ready {3:00}:{4:00} (haste {5})" -f $p.summonerName, $um, $us, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Cyan
+                Update-Clipboard
+            }
+        }
+    } elseif ($tok -match '^([1-5])(\d{4})$') {
+        $idx = [int]$Matches[1] - 1
+        $ctime = [int]$Matches[2]
+        $cm = [math]::Floor($ctime / 100)
+        $cs = $ctime % 100
+        if ($idx -lt $enemies.Count -and $cm -le 59 -and $cs -le 59) {
+            $p = $enemies[$idx]
+            $flashSlot = Get-FlashSlot $p
+            if ($flashSlot -gt 0) {
+                $key = "$($p.summonerName)|$flashSlot"
+                if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
+            }
+            $customTimers[$p.summonerName] = $cm * 60 + $cs
+            Add-Event ("{0} Flash timer set manually: ready {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
+            Update-Clipboard
+        } else {
+            Add-Event ("Invalid custom timer: {0}" -f $tok) -Color DarkGray
+        }
+    } else {
+        Add-Event ("Unrecognized input: {0}" -f $tok) -Color DarkGray
+    }
+}
+
 Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
 Write-Host "Starting helper if needed..." -ForegroundColor DarkGray
 
@@ -389,6 +479,9 @@ if ($null -ne $script:mmf) {
 
 $waiting = $false
 $misses = 0
+$consoleBuf = ""
+$consolePending = ""
+$consoleDeadline = 0
 while ($true) {
     $data = Get-Json $dataUrl
     if ($null -eq $data) {
@@ -431,110 +524,52 @@ while ($true) {
     $input = ""
     while ([ChatHook]::Events.TryDequeue([ref]$input)) {
         foreach ($tok in ($input -split '\s+')) {
-            if ($tok -eq "") { continue }
-            if ($tok -match '^[1-5]$') {
-                $idx = [int]$tok - 1
-                if ($idx -lt $enemies.Count) {
-                    $p = $enemies[$idx]
-                    $flashSlot = Get-FlashSlot $p
-                    if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
-                    else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
-                }
-            } elseif ($tok -match '^([1-5])\1\1$') {
-                $idx = [int]$Matches[1] - 1
-                if ($idx -lt $enemies.Count) {
-                    $p = $enemies[$idx]
-                    $cosmic[$p.summonerName] = -not $cosmic[$p.summonerName]
-                    $haste = Get-Haste $p
-                    $bootsStr = ""
-                    foreach ($it in $p.items) { if ($bootsHaste.ContainsKey([int]$it.itemID)) { $bootsStr += " $($it.displayName)" } }
-                    $playerHaste[$p.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
-                    Add-Event ("{0} Cosmic Insight: {1} (total haste {2})" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste) -Color Magenta
-                }
-            } elseif ($tok -match '^([1-5])\1$') {
-                $idx = [int]$Matches[1] - 1
-                if ($idx -lt $enemies.Count) {
-                    $p = $enemies[$idx]
-                    $flashSlot = Get-FlashSlot $p
-                    $cleared = $false
-                    if ($flashSlot -gt 0) {
-                        $key = "$($p.summonerName)|$flashSlot"
-                        if ($spellState.ContainsKey($key)) {
-                            $spellState.Remove($key)
-                            Add-Event ("{0} Flash timer cleared" -f $p.summonerName) -Color Cyan
-                            $cleared = $true
-                        }
-                    }
-                    if ($customTimers.ContainsKey($p.summonerName)) {
-                        $customTimers.Remove($p.summonerName)
-                        Add-Event ("{0} custom timer cleared" -f $p.summonerName) -Color Cyan
-                        $cleared = $true
-                    }
-                    if ($cleared) { Update-Clipboard }
-                }
-            } elseif ($tok -match '^(\d{4})(top|jg|mid|ad|sp)$') {
-                $utime = [int]$Matches[1]
-                $um = [math]::Floor($utime / 100)
-                $us = $utime % 100
-                $ab = $Matches[2].ToLower()
-                if ($um -gt 59 -or $us -gt 59) {
-                    Add-Event ("Invalid use time: {0}" -f $tok) -Color DarkGray
-                } else {
-                    $p = $enemies | Where-Object { $posAbbrev[$_.position] -eq $ab } | Select-Object -First 1
-                    if ($null -eq $p) {
-                        Add-Event ("No {0} enemy found" -f $ab) -Color DarkGray
-                    } else {
-                        $flashSlot = Get-FlashSlot $p
-                        if ($flashSlot -gt 0) {
-                            $key = "$($p.summonerName)|$flashSlot"
-                            if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
-                        }
-                        $useTime = $um * 60 + $us
-                        $haste = Get-Haste $p
-                        $total = 300 / (1 + $haste / 100.0)
-                        $ready = $useTime + $total
-                        $customTimers[$p.summonerName] = $ready
-                        Add-Event ("{0} Flash used at {1:00}:{2:00} - ready {3:00}:{4:00} (haste {5})" -f $p.summonerName, $um, $us, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Cyan
-                        Update-Clipboard
-                    }
-                }
-            } elseif ($tok -match '^([1-5])(\d{4})$') {
-                $idx = [int]$Matches[1] - 1
-                $ctime = [int]$Matches[2]
-                $cm = [math]::Floor($ctime / 100)
-                $cs = $ctime % 100
-                if ($idx -lt $enemies.Count -and $cm -le 59 -and $cs -le 59) {
-                    $p = $enemies[$idx]
-                    $flashSlot = Get-FlashSlot $p
-                    if ($flashSlot -gt 0) {
-                        $key = "$($p.summonerName)|$flashSlot"
-                        if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
-                    }
-                    $customTimers[$p.summonerName] = $cm * 60 + $cs
-                    Add-Event ("{0} Flash timer set manually: ready {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
-                    Update-Clipboard
-                } else {
-                    Add-Event ("Invalid custom timer: {0}" -f $tok) -Color DarkGray
-                }
-            }
+            if ($tok -ne "") { Process-Token $tok }
         }
+    }
+
+    if ($consolePending -ne "" -and [Environment]::TickCount -ge $consoleDeadline) {
+        Process-Token $consolePending
+        $consolePending = ""
     }
 
     try {
         if ([Console]::KeyAvailable) {
             $ki = [Console]::ReadKey($true)
-            $key = $ki.KeyChar
+            $c = $ki.KeyChar
             $vk = [int]$ki.Key
-            if ($key -eq 'q') {
+            if ($c -eq 'q' -and $consolePending -eq "" -and $consoleBuf.Length -eq 0) {
                 [ChatHook]::Uninstall()
                 break
-            } elseif ($vk -ge 49 -and $vk -le 53) {
-                $idx = $vk - 49
-                if ($idx -lt $enemies.Count) {
-                    $p = $enemies[$idx]
-                    $flashSlot = Get-FlashSlot $p
-                    if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
-                    else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
+            } elseif ($consolePending -ne "") {
+                if ($vk -eq 13) {
+                    Process-Token $consolePending
+                    $consolePending = ""
+                } elseif ($vk -eq 8) {
+                    $consoleBuf = $consolePending
+                    $consolePending = ""
+                } elseif ($c -match '[0-9a-zA-Z ]') {
+                    $consoleBuf = $consolePending + $c
+                    $consolePending = ""
+                } else {
+                    $consoleBuf = $consolePending
+                    $consolePending = ""
+                }
+            } elseif ($vk -eq 13) {
+                if ($consoleBuf.Length -gt 0) {
+                    foreach ($tok in ($consoleBuf -split '\s+')) {
+                        if ($tok -ne "") { Process-Token $tok }
+                    }
+                    $consoleBuf = ""
+                }
+            } elseif ($vk -eq 8) {
+                if ($consoleBuf.Length -gt 0) { $consoleBuf = $consoleBuf.Substring(0, $consoleBuf.Length - 1) }
+            } elseif ($c -match '[0-9a-zA-Z ]') {
+                if ($consoleBuf.Length -eq 0 -and $c -ge '1' -and $c -le '5') {
+                    $consolePending = $c
+                    $consoleDeadline = [Environment]::TickCount + 300
+                } else {
+                    $consoleBuf += $c
                 }
             }
         }
@@ -543,7 +578,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  console: type any input + Enter (1-5 alone = quick record)  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
@@ -576,6 +611,10 @@ while ($true) {
     Write-Host ""
     Write-Host "--- recent events ---" -ForegroundColor DarkGray
     foreach ($e in $eventLog) { Write-Host $e.Text -ForegroundColor $e.Color }
+    if ($consoleBuf.Length -gt 0 -or $consolePending -ne "") {
+        Write-Host ""
+        Write-Host ("input: {0}{1}_" -f $consoleBuf, $consolePending) -ForegroundColor Yellow
+    }
 
     [ChatHook]::EventsSignal.WaitOne($IntervalMs) | Out-Null
 }
