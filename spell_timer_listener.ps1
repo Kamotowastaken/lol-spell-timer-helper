@@ -90,7 +90,7 @@ public static class ChatHook
                 }
                 return CallNextHookEx(_hook, nCode, wParam, lParam);
             }
-            if (k.vkCode == VK_RETURN)
+            if (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE)
             {
                 if (_chatOpen)
                 {
@@ -102,15 +102,10 @@ public static class ChatHook
                     _pending.Length = 0;
                     _chatOpen = false;
                 }
-                else
+                else if (k.vkCode == VK_RETURN)
                 {
                     _chatOpen = true;
                 }
-            }
-            else if (k.vkCode == VK_ESCAPE)
-            {
-                _chatOpen = false;
-                _pending.Length = 0;
             }
             else if (_chatOpen)
             {
@@ -547,7 +542,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter/Esc  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
