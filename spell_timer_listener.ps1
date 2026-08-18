@@ -14,6 +14,7 @@ using System.Collections.Concurrent;
 public static class ChatHook
 {
     public static ConcurrentQueue<string> Events = new ConcurrentQueue<string>();
+    public static System.Threading.AutoResetEvent EventsSignal = new System.Threading.AutoResetEvent(false);
     private static IntPtr _hook = IntPtr.Zero;
     private static Thread _thread;
     private static uint _threadId;
@@ -96,6 +97,7 @@ public static class ChatHook
                     if (_pending.Length > 0)
                     {
                         Events.Enqueue(_pending.ToString());
+                        EventsSignal.Set();
                     }
                     _pending.Length = 0;
                     _chatOpen = false;
@@ -567,7 +569,7 @@ while ($true) {
     Write-Host "--- recent events ---" -ForegroundColor DarkGray
     foreach ($e in $eventLog) { Write-Host $e.Text -ForegroundColor $e.Color }
 
-    Start-Sleep -Milliseconds $IntervalMs
+    [ChatHook]::EventsSignal.WaitOne($IntervalMs) | Out-Null
 }
 
 try { Stop-Process -Name spell_timer_helper -Force -ErrorAction SilentlyContinue } catch { }
