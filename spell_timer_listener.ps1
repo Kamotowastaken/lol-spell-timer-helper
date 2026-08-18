@@ -310,8 +310,12 @@ function Use-Spell {
         return
     }
     if ($customTimers.ContainsKey($Player.summonerName)) {
+        $crt = $customTimers[$Player.summonerName]
+        if ($crt -gt $GameTime) {
+            Add-Event ("{0} custom timer (ready {1:00}:{2:00}) overrides record" -f $Player.summonerName, [math]::Floor($crt / 60), ($crt % 60)) -Color DarkGray
+            return
+        }
         $customTimers.Remove($Player.summonerName)
-        Add-Event ("{0} custom timer replaced by new record" -f $Player.summonerName) -Color DarkGray
     }
     $haste = Get-Haste $Player
     $bootsStr = ""
