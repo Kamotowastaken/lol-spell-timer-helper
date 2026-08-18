@@ -535,11 +535,6 @@ while ($true) {
         }
     }
 
-    if ($consolePending -ne "" -and [Environment]::TickCount -ge $consoleDeadline) {
-        Process-Token $consolePending
-        $consolePending = ""
-    }
-
     try {
         if ([Console]::KeyAvailable) {
             $ki = [Console]::ReadKey($true)
