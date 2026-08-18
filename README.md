@@ -29,6 +29,7 @@ Open chat with `Enter`, type one of the following, then `Enter` again:
 | Input | Meaning |
 |-------|---------|
 | `5` | Record enemy 5's Flash (starts its cooldown timer) |
+| `jg` | Record the jungler's Flash (position words: `top`, `jg`, `mid`, `ad`, `sp`) |
 | `11` | Clear enemy 1's Flash and custom timers |
 | `555` | Toggle Cosmic Insight for enemy 5 (support) |
 | `12158` | Manual Flash timer: enemy 1 (top) ready at 21:58 |

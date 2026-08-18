@@ -342,6 +342,16 @@ function Process-Token([string]$tok) {
             if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
             else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
         }
+    } elseif ($tok -match '^(top|jg|mid|ad|sp)$') {
+        $ab = $Matches[1].ToLower()
+        $p = $enemies | Where-Object { $posAbbrev[$_.position] -eq $ab } | Select-Object -First 1
+        if ($null -eq $p) {
+            Add-Event ("No {0} enemy found" -f $ab) -Color DarkGray
+        } else {
+            $flashSlot = Get-FlashSlot $p
+            if ($flashSlot -gt 0) { Use-Spell -Player $p -SpellIdx $flashSlot -GameTime $data.gameData.gameTime }
+            else { Add-Event ("{0} has no Flash" -f $p.summonerName) -Color DarkGray }
+        }
     } elseif ($tok -match '^([1-5])\1\1$') {
         $idx = [int]$Matches[1] - 1
         if ($idx -lt $enemies.Count) {
