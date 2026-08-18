@@ -34,7 +34,7 @@ Open chat with `Enter`, type one of the following, then `Enter` again:
 | `12158` | Manual Flash timer: enemy 1 (top) ready at 21:58 |
 | `1208ad` | Enemy AD used Flash at 12:08 — ready time computed automatically |
 
-Anything else is ignored (sent to chat as a normal message).
+Multiple timers in one message: separate entries with spaces, e.g. `1208ad 1512jg` (any mix of the forms above). Anything else is ignored (sent to chat as a normal message).
 
 ## Requirements
 
