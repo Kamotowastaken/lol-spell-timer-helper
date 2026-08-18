@@ -206,6 +206,7 @@ function Add-Event {
     $ts = Get-Date -Format "HH:mm:ss"
     [void]$eventLog.Add(@{ Text = "[$ts] $Text"; Color = $Color })
     if ($eventLog.Count -gt 12) { $eventLog.RemoveAt(0) }
+    try { [System.IO.File]::AppendAllText("C:\League spell timing helper\listener.log", "[$ts] $Text`r`n") } catch { }
 }
 
 function Format-CD {
@@ -486,9 +487,6 @@ if ($null -ne $script:mmf) {
 
 $waiting = $false
 $misses = 0
-$consoleBuf = ""
-$consolePending = ""
-$consoleDeadline = 0
 while ($true) {
     $data = Get-Json $dataUrl
     if ($null -eq $data) {
@@ -538,48 +536,9 @@ while ($true) {
     try {
         if ([Console]::KeyAvailable) {
             $ki = [Console]::ReadKey($true)
-            $c = $ki.KeyChar
-            $vk = [int]$ki.Key
-            if ($c -eq 'q' -and $consolePending -eq "" -and $consoleBuf.Length -eq 0) {
+            if ($ki.KeyChar -eq 'q') {
                 [ChatHook]::Uninstall()
                 break
-            } elseif ($consolePending -ne "") {
-                if ($vk -eq 13) {
-                    Process-Token $consolePending
-                    $consolePending = ""
-                } elseif ($vk -eq 8) {
-                    $consoleBuf = $consolePending
-                    $consolePending = ""
-                } elseif ($c -match '[0-9a-zA-Z ]') {
-                    $consoleBuf = $consolePending + $c
-                    $consolePending = ""
-                } else {
-                    $consoleBuf = $consolePending
-                    $consolePending = ""
-                }
-            } elseif ($vk -eq 13) {
-                if ($consoleBuf.Length -gt 0) {
-                    foreach ($tok in ($consoleBuf -split '\s+')) {
-                        if ($tok -ne "") { Process-Token $tok }
-                    }
-                    $consoleBuf = ""
-                }
-            } elseif ($vk -eq 8) {
-                if ($consoleBuf.Length -gt 0) { $consoleBuf = $consoleBuf.Substring(0, $consoleBuf.Length - 1) }
-            } elseif ($c -match '[0-9a-zA-Z ]') {
-                if ($consoleBuf.Length -eq 0 -and $c -ge '1' -and $c -le '5') {
-                    $consolePending = $c
-                    $consoleDeadline = [Environment]::TickCount + 500
-                    while ([Environment]::TickCount -lt $consoleDeadline -and -not [Console]::KeyAvailable) {
-                        Start-Sleep -Milliseconds 20
-                    }
-                    if (-not [Console]::KeyAvailable) {
-                        Process-Token $consolePending
-                        $consolePending = ""
-                    }
-                } else {
-                    $consoleBuf += $c
-                }
             }
         }
     } catch { }
@@ -587,7 +546,7 @@ while ($true) {
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  console: type any input + Enter (1-5 alone = quick record)  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
@@ -620,10 +579,6 @@ while ($true) {
     Write-Host ""
     Write-Host "--- recent events ---" -ForegroundColor DarkGray
     foreach ($e in $eventLog) { Write-Host $e.Text -ForegroundColor $e.Color }
-    if ($consoleBuf.Length -gt 0 -or $consolePending -ne "") {
-        Write-Host ""
-        Write-Host ("input: {0}{1}_" -f $consoleBuf, $consolePending) -ForegroundColor Yellow
-    }
 
     [ChatHook]::EventsSignal.WaitOne($IntervalMs) | Out-Null
 }
