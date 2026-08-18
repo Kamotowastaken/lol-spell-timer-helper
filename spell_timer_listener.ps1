@@ -567,7 +567,14 @@ while ($true) {
             } elseif ($c -match '[0-9a-zA-Z ]') {
                 if ($consoleBuf.Length -eq 0 -and $c -ge '1' -and $c -le '5') {
                     $consolePending = $c
-                    $consoleDeadline = [Environment]::TickCount + 300
+                    $consoleDeadline = [Environment]::TickCount + 500
+                    while ([Environment]::TickCount -lt $consoleDeadline -and -not [Console]::KeyAvailable) {
+                        Start-Sleep -Milliseconds 20
+                    }
+                    if (-not [Console]::KeyAvailable) {
+                        Process-Token $consolePending
+                        $consolePending = ""
+                    }
                 } else {
                     $consoleBuf += $c
                 }
