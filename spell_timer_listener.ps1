@@ -477,21 +477,25 @@ while ($true) {
                 $um = [math]::Floor($utime / 100)
                 $us = $utime % 100
                 $ab = $Matches[2].ToLower()
-                if ($um -le 59 -and $us -le 59) {
+                if ($um -gt 59 -or $us -gt 59) {
+                    Add-Event ("Invalid use time: {0}" -f $tok) -Color DarkGray
+                } else {
                     $p = $enemies | Where-Object { $posAbbrev[$_.position] -eq $ab } | Select-Object -First 1
-                    if ($null -ne $p) {
+                    if ($null -eq $p) {
+                        Add-Event ("No {0} enemy found" -f $ab) -Color DarkGray
+                    } else {
                         $flashSlot = Get-FlashSlot $p
                         if ($flashSlot -gt 0) {
-                            $useTime = $um * 60 + $us
-                            $haste = Get-Haste $p
-                            $total = 300 / (1 + $haste / 100.0)
-                            $ready = $useTime + $total
                             $key = "$($p.summonerName)|$flashSlot"
                             if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
-                            $customTimers[$p.summonerName] = $ready
-                            Add-Event ("{0} Flash used at {1:00}:{2:00} - ready {3:00}:{4:00} (haste {5})" -f $p.summonerName, $um, $us, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Cyan
-                            Update-Clipboard
                         }
+                        $useTime = $um * 60 + $us
+                        $haste = Get-Haste $p
+                        $total = 300 / (1 + $haste / 100.0)
+                        $ready = $useTime + $total
+                        $customTimers[$p.summonerName] = $ready
+                        Add-Event ("{0} Flash used at {1:00}:{2:00} - ready {3:00}:{4:00} (haste {5})" -f $p.summonerName, $um, $us, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Cyan
+                        Update-Clipboard
                     }
                 }
             } elseif ($tok -match '^([1-5])(\d{4})$') {
