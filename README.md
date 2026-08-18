@@ -4,7 +4,7 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 
 ## How it works
 
-- **Listener** (`spell_timer_listener.ps1`) polls the LoL Live Client API (`https://127.0.0.1:2999/liveclientdata/allgamedata`) and shows a live table of enemy Flash timers. A low-level keyboard hook watches in-game chat: whatever you type between the two Enter keys is interpreted as a command (see Chat input).
+- **Listener** (`spell_timer_listener.ps1`) polls the LoL Live Client API (`https://127.0.0.1:2999/liveclientdata/allgamedata`) and shows a live table of enemy Flash timers. A low-level keyboard hook watches in-game chat: whatever you type between the two Enter keys is interpreted as a command (see Chat input). Inputs are event-driven — the hook signals the main loop the moment you press Enter, so timers and the shared memory file update within milliseconds instead of waiting for the next poll cycle.
 - **Helper** (`spell_timer_helper.exe`) is a driver-level keyboard/mouse injector built on the [Interception](https://github.com/oblitum/Interception) driver. It types the timers into the game chat using hardware-level input, which works where normal SendKeys/clipboard paste does not (the game's in-game clipboard is separate from the Windows clipboard).
 - Timers flow from listener to helper through a shared memory-mapped file (`SpellTimersMMF`), with a disk fallback (`spell_timers.txt`).
 
