@@ -36,6 +36,10 @@ Open chat with `Enter`, type one of the following, then `Enter` again:
 
 Multiple timers in one message: separate entries with spaces, e.g. `1208ad 1512jg` (any mix of the forms above). Anything else is ignored (sent to chat as a normal message).
 
+## Console input
+
+The listener window accepts the same commands as chat: just type them and press `Enter` (e.g. `1208ad 1512jg`). A single digit `1`-`5` alone still records instantly without `Enter` (300 ms deadline). `Q` quits. The current input is shown at the bottom of the console.
+
 ## Requirements
 
 - Windows with the [Interception](https://github.com/oblitum/Interception) driver installed (services `keyboard` and `mouse`).
