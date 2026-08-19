@@ -35,7 +35,7 @@ Open chat with `Enter`, type one of the following, then close chat with `Enter` 
 | `12158` | Manual Flash timer: enemy 1 (top) ready at 21:58 |
 | `1208ad` | Enemy AD used Flash at 12:08 — ready time computed automatically |
 
-Multiple timers in one message: separate entries with spaces, e.g. `1208ad 1512jg` (any mix of the forms above). Anything else is ignored (with `Enter` it's sent to chat as a normal message; with `Esc` nothing is sent).
+Multiple timers in one message: separate entries with spaces, e.g. `1208ad 1512jg` (any mix of the forms above). A message is only treated as a command if **every** word parses — if any word doesn't, the whole message is ignored, so normal chat like `did ad flash?` never triggers a record. Custom timers auto-expire once their ready time passes (removed from the display and the paste).
 
 ## Requirements
 

@@ -491,7 +491,11 @@ while ($true) {
             $waiting = $true
             Add-Event "Waiting for game data..."
             try { Clear-Host } catch { }
-            Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
+function Test-Token([string]$tok) {
+    return ($tok -match '^[1-5]$' -or $tok -match '^(top|jg|mid|ad|sp)$' -or $tok -match '^([1-5])\1\1$' -or $tok -match '^([1-5])\1$' -or $tok -match '^(\d{4})(top|jg|mid|ad|sp)$' -or $tok -match '^([1-5])(\d{4})$')
+}
+
+Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
             Write-Host "No live game data. Waiting for a game..." -ForegroundColor Yellow
             Write-Host "Press Q to quit." -ForegroundColor DarkGray
         } elseif ($misses -ge 10) {
@@ -520,12 +524,25 @@ while ($true) {
     $script:gameTime = $data.gameData.gameTime
     $script:enemyByName = @{}
     foreach ($e in $enemies) { $script:enemyByName[$e.summonerName] = $e }
+    $expired = @($customTimers.Keys | Where-Object { $customTimers[$_] -le $script:gameTime })
+    foreach ($name in $expired) {
+        $customTimers.Remove($name)
+        Add-Event ("{0} custom timer expired" -f $name) -Color DarkGray
+    }
     Update-Clipboard
 
     $input = ""
     while ([ChatHook]::Events.TryDequeue([ref]$input)) {
-        foreach ($tok in ($input -split '\s+')) {
-            if ($tok -ne "") { Process-Token $tok }
+        $tokens = @($input -split '\s+' | Where-Object { $_ -ne "" })
+        if ($tokens.Count -eq 0) { continue }
+        $allValid = $true
+        foreach ($tok in $tokens) {
+            if (-not (Test-Token $tok)) { $allValid = $false; break }
+        }
+        if ($allValid) {
+            foreach ($tok in $tokens) { Process-Token $tok }
+        } else {
+            Add-Event ("Ignored (not a command): {0}" -f $input) -Color DarkGray
         }
     }
 
