@@ -20,12 +20,41 @@ public static class ChatHook
     private static uint _threadId;
     private static bool _chatOpen = false;
     private static System.Text.StringBuilder _pending = new System.Text.StringBuilder();
+    private static int _cursor = 0;
+    private static bool _ctrlDown = false;
+    private static bool _altDown = false;
     private static EventWaitHandle _typingFlag;
 
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KEYUP = 0x0101;
+    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_SYSKEYUP = 0x0105;
+    private const int VK_BACK = 0x08;
+    private const int VK_TAB = 0x09;
+    private const int VK_SHIFT = 0x10;
+    private const int VK_CONTROL = 0x11;
+    private const int VK_MENU = 0x12;
+    private const int VK_CAPITAL = 0x14;
     private const int VK_RETURN = 0x0D;
     private const int VK_ESCAPE = 0x1B;
+    private const int VK_PRIOR = 0x21;
+    private const int VK_NEXT = 0x22;
+    private const int VK_END = 0x23;
+    private const int VK_HOME = 0x24;
+    private const int VK_LEFT = 0x25;
+    private const int VK_UP = 0x26;
+    private const int VK_RIGHT = 0x27;
+    private const int VK_DOWN = 0x28;
+    private const int VK_DELETE = 0x2E;
+    private const int VK_LSHIFT = 0xA0;
+    private const int VK_RSHIFT = 0xA1;
+    private const int VK_LCONTROL = 0xA2;
+    private const int VK_RCONTROL = 0xA3;
+    private const int VK_LMENU = 0xA4;
+    private const int VK_RMENU = 0xA5;
+    private const int VK_LWIN = 0x5B;
+    private const int VK_RWIN = 0x5C;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -51,6 +80,17 @@ public static class ChatHook
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -67,64 +107,147 @@ public static class ChatHook
         if (h == IntPtr.Zero) return false;
         uint pid;
         GetWindowThreadProcessId(h, out pid);
+        if (pid == 0) return false;
+        IntPtr proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (proc == IntPtr.Zero) return false;
         try
         {
-            System.Diagnostics.Process p = System.Diagnostics.Process.GetProcessById((int)pid);
-            return p.ProcessName == "League of Legends";
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(260);
+            uint size = 260;
+            if (!QueryFullProcessImageName(proc, 0, sb, ref size)) return false;
+            return sb.ToString().EndsWith("League of Legends.exe", StringComparison.OrdinalIgnoreCase);
         }
-        catch { return false; }
+        finally
+        {
+            CloseHandle(proc);
+        }
+    }
+
+    private static void ResetInput()
+    {
+        _pending.Length = 0;
+        _cursor = 0;
+    }
+
+    private static bool IsModifier(int vk)
+    {
+        return vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU
+            || vk == VK_LSHIFT || vk == VK_RSHIFT || vk == VK_LCONTROL
+            || vk == VK_RCONTROL || vk == VK_LMENU || vk == VK_RMENU
+            || vk == VK_LWIN || vk == VK_RWIN;
+    }
+
+    private static bool IsNonText(int vk)
+    {
+        if (vk >= 0x70 && vk <= 0x87) { return true; } // F1-F24
+        if (vk >= 0x21 && vk <= 0x28) { return true; } // pgup pgdn end home arrows
+        switch (vk)
+        {
+            case VK_TAB: case VK_CAPITAL:
+            case 0x13: case 0x2C: case 0x5D: case 0x5F:
+            case 0x90: case 0x91:
+                return true;
+        }
+        return false;
+    }
+
+    private static char MapChar(int vk)
+    {
+        if (vk >= 0x31 && vk <= 0x39) { return (char)vk; }
+        if (vk == 0x30) { return '0'; }
+        if (vk >= 0x60 && vk <= 0x69) { return (char)(vk - 0x30); }
+        if (vk >= 0x41 && vk <= 0x5A) { return (char)vk; }
+        if (vk == 0x20) { return ' '; }
+        return '\0';
     }
 
     private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
+        if (nCode < 0) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        int msg = wParam.ToInt32();
+        KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+        int vk = (int)k.vkCode;
+
+        if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
         {
-            KBDLLHOOKSTRUCT k = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-            if (_typingFlag != null && _typingFlag.WaitOne(0)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
-            if (!IsGameFocused())
-            {
-                if (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE)
-                {
-                    _chatOpen = false;
-                    _pending.Length = 0;
-                }
-                return CallNextHookEx(_hook, nCode, wParam, lParam);
-            }
-            if (k.vkCode == VK_RETURN || k.vkCode == VK_ESCAPE)
-            {
-                if (_chatOpen)
-                {
-                    if (_pending.Length > 0)
-                    {
-                        Events.Enqueue(_pending.ToString());
-                        EventsSignal.Set();
-                    }
-                    _pending.Length = 0;
-                    _chatOpen = false;
-                }
-                else if (k.vkCode == VK_RETURN)
-                {
-                    _chatOpen = true;
-                }
-            }
-            else if (_chatOpen)
-            {
-                char c = '\0';
-                if (k.vkCode >= 0x31 && k.vkCode <= 0x39) { c = (char)k.vkCode; }
-                else if (k.vkCode == 0x30) { c = '0'; }
-                else if (k.vkCode >= 0x60 && k.vkCode <= 0x69) { c = (char)(k.vkCode - 0x30); }
-                else if (k.vkCode >= 0x41 && k.vkCode <= 0x5A) { c = (char)k.vkCode; }
-                else if (k.vkCode == 0x20) { c = ' '; }
-                if (c != '\0')
-                {
-                    _pending.Append(c);
-                }
-                else
-                {
-                    _pending.Length = 0;
-                }
-            }
+            if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL) { _ctrlDown = false; }
+            if (vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU) { _altDown = false; }
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
         }
+
+        if (msg != WM_KEYDOWN && msg != WM_SYSKEYDOWN) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        if (_typingFlag != null && _typingFlag.WaitOne(0)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL) { _ctrlDown = true; return CallNextHookEx(_hook, nCode, wParam, lParam); }
+        if (vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU) { _altDown = true; return CallNextHookEx(_hook, nCode, wParam, lParam); }
+        if (IsModifier(vk)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        if (!IsGameFocused())
+        {
+            if (vk == VK_RETURN || vk == VK_ESCAPE)
+            {
+                _chatOpen = false;
+                ResetInput();
+            }
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+
+        if (vk == VK_RETURN || vk == VK_ESCAPE)
+        {
+            if (_chatOpen)
+            {
+                if (_pending.Length > 0)
+                {
+                    Events.Enqueue(_pending.ToString());
+                    EventsSignal.Set();
+                }
+                ResetInput();
+                _chatOpen = false;
+            }
+            else if (vk == VK_RETURN)
+            {
+                _chatOpen = true;
+                ResetInput();
+            }
+            return CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+
+        if (!_chatOpen) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        if (_ctrlDown || _altDown) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        switch (vk)
+        {
+            case VK_BACK:
+                if (_cursor > 0) { _pending.Remove(_cursor - 1, 1); _cursor--; }
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+            case VK_DELETE:
+                if (_cursor < _pending.Length) { _pending.Remove(_cursor, 1); }
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+            case VK_LEFT:
+                if (_cursor > 0) { _cursor--; }
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+            case VK_RIGHT:
+                if (_cursor < _pending.Length) { _cursor++; }
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+            case VK_HOME:
+                _cursor = 0;
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+            case VK_END:
+                _cursor = _pending.Length;
+                return CallNextHookEx(_hook, nCode, wParam, lParam);
+        }
+
+        if (IsNonText(vk)) { return CallNextHookEx(_hook, nCode, wParam, lParam); }
+
+        char c = MapChar(vk);
+        if (c == '\0') { c = '?'; } // unmapped printable key poisons the line so it can't parse as a command
+        if (_cursor < 0) { _cursor = 0; }
+        if (_cursor > _pending.Length) { _cursor = _pending.Length; }
+        _pending.Insert(_cursor, c);
+        _cursor++;
         return CallNextHookEx(_hook, nCode, wParam, lParam);
     }
 
@@ -187,13 +310,22 @@ $lastClip = ""
 
 function Get-Json {
     param([string]$Uri)
+    $resp = $null
     try {
-        $raw = (& curl.exe -k -s -m 2 $Uri 2>$null) -join "`n"
-        if ($LASTEXITCODE -ne 0) { return $null }
+        $req = [System.Net.HttpWebRequest]::Create($Uri)
+        $req.Timeout = 1500
+        $req.ReadWriteTimeout = 1500
+        $req.KeepAlive = $true
+        $resp = $req.GetResponse()
+        $sr = New-Object System.IO.StreamReader($resp.GetResponseStream())
+        $raw = $sr.ReadToEnd()
+        $sr.Close()
         if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
         return $raw | ConvertFrom-Json
     } catch {
         return $null
+    } finally {
+        if ($null -ne $resp) { $resp.Close() }
     }
 }
 
@@ -300,8 +432,10 @@ function Use-Spell {
     }
     $key = "$($Player.summonerName)|$SpellIdx"
     if ($spellState.ContainsKey($key) -and $spellState[$key].readyTime -gt $GameTime) {
-        $ready = $spellState[$key].readyTime - 10
-        $spellState[$key] = @{ readyTime = $ready; wasOnCD = $true; spellName = $spell }
+        $st = $spellState[$key]
+        $st.readyTime = $st.readyTime - 10
+        $st.wasOnCD = $true
+        $ready = $st.readyTime
         Add-Event ("{0} {1} re-used - timer -10s, ready {2:00}:{3:00}" -f $Player.summonerName, $spell, [math]::Floor($ready / 60), ($ready % 60)) -Color Yellow
         Update-Clipboard
         return
@@ -320,9 +454,11 @@ function Use-Spell {
         if ($bootsHaste.ContainsKey([int]$it.itemID)) { $bootsStr += " $($it.displayName)" }
     }
     $script:playerHaste[$Player.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
+    $ciAtCast = [bool]$cosmic[$Player.summonerName]
+    $ciHaste = if ($ciAtCast) { 18 } else { 0 }
     $total = $base / (1 + $haste / 100.0)
     $ready = $GameTime + $total
-    $spellState["$($Player.summonerName)|$SpellIdx"] = @{ readyTime = $ready; wasOnCD = $true; spellName = $spell }
+    $spellState["$($Player.summonerName)|$SpellIdx"] = @{ readyTime = $ready; wasOnCD = $true; spellName = $spell; hasteExCI = $haste - $ciHaste; ci = $ciAtCast }
     Add-Event ("{0} used {1} - ready {2:00}:{3:00} (haste {4})" -f $Player.summonerName, $spell, [math]::Floor($ready / 60), ($ready % 60), $haste) -Color Yellow
     Update-Clipboard
 }
@@ -355,7 +491,27 @@ function Process-Token([string]$tok) {
             $bootsStr = ""
             foreach ($it in $p.items) { if ($bootsHaste.ContainsKey([int]$it.itemID)) { $bootsStr += " $($it.displayName)" } }
             $playerHaste[$p.summonerName] = @{ Haste = $haste; Boots = $bootsStr.Trim() }
-            Add-Event ("{0} Cosmic Insight: {1} (total haste {2})" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste) -Color Magenta
+            $adjustStr = ""
+            $flashSlot = Get-FlashSlot $p
+            if ($flashSlot -gt 0) {
+                $key = "$($p.summonerName)|$flashSlot"
+                if ($spellState.ContainsKey($key) -and $spellState[$key].readyTime -gt $script:gameTime) {
+                    $st = $spellState[$key]
+                    $base = $baseCD[$st.spellName]
+                    if ($null -ne $base -and $null -ne $st.hasteExCI) {
+                        $newCi = [bool]$cosmic[$p.summonerName]
+                        $oldCi = if ($st.ci) { 18 } else { 0 }
+                        $newCiH = if ($newCi) { 18 } else { 0 }
+                        $oldTotal = $base / (1 + ($st.hasteExCI + $oldCi) / 100.0)
+                        $newTotal = $base / (1 + ($st.hasteExCI + $newCiH) / 100.0)
+                        $st.readyTime = $st.readyTime - ($oldTotal - $newTotal)
+                        $st.ci = $newCi
+                        $adjustStr = " - timer adjusted to ready {0:00}:{1:00}" -f [math]::Floor($st.readyTime / 60), ($st.readyTime % 60)
+                        Update-Clipboard
+                    }
+                }
+            }
+            Add-Event ("{0} Cosmic Insight: {1} (total haste {2}){3}" -f $p.summonerName, $(if ($cosmic[$p.summonerName]) { "ON" } else { "OFF" }), $haste, $adjustStr) -Color Magenta
         }
     } elseif ($tok -match '^([1-5])\1$') {
         $idx = [int]$Matches[1] - 1

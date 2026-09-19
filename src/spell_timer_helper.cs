@@ -55,7 +55,11 @@ class InterceptionPaste
     const ushort KEY_UP = 0x01;
     const ushort FILTER_KEY_DOWN = 0x01;
     const ushort FILTER_KEY_UP = 0x02;
-    const ushort FILTER_MOUSE_ALL = 0xFFFF;
+    const ushort FILTER_MOUSE_NONE = 0x0000;
+    const ushort FILTER_MOUSE_CLICKS = 0x03FF;
+    const ushort FILTER_MOUSE_BACK = 0x00C0;
+    const ushort MOUSE_BUTTON_4_DOWN = 0x0040;
+    const ushort MOUSE_BUTTON_4_UP = 0x0080;
 
     const ushort SC_CTRL = 0x1D;
     const ushort SC_V = 0x2F;
@@ -69,6 +73,7 @@ class InterceptionPaste
     static bool ctrlDown = false;
     static bool shiftDown = false;
     static bool swallowV = false;
+    static int lastKbdDevice = 1;
 
     static EventWaitHandle typingFlag = null;
 
@@ -78,6 +83,14 @@ class InterceptionPaste
     static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr hObject);
+
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     static bool GameFocused()
     {
@@ -85,11 +98,20 @@ class InterceptionPaste
         if (h == IntPtr.Zero) return false;
         uint pid;
         GetWindowThreadProcessId(h, out pid);
+        if (pid == 0) return false;
+        IntPtr proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (proc == IntPtr.Zero) return false;
         try
         {
-            return Process.GetProcessById((int)pid).ProcessName == "League of Legends";
+            StringBuilder sb = new StringBuilder(260);
+            uint size = 260;
+            if (!QueryFullProcessImageName(proc, 0, sb, ref size)) return false;
+            return sb.ToString().EndsWith("League of Legends.exe", StringComparison.OrdinalIgnoreCase);
         }
-        catch { return false; }
+        finally
+        {
+            CloseHandle(proc);
+        }
     }
 
     static int CharToScan(char c)
@@ -228,8 +250,8 @@ class InterceptionPaste
         IntPtr ctx = interception_create_context();
         if (ctx == IntPtr.Zero) { Console.WriteLine("Failed to create context"); return; }
         interception_set_filter(ctx, interception_is_keyboard, FILTER_KEY_DOWN | FILTER_KEY_UP);
-        interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_ALL);
-        Console.WriteLine("League spell timing helper running. Ctrl+Shift+V = type+copy+send timers. Ctrl+V = paste+send. Mouse blocked during flow.");
+        interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_BACK);
+        Console.WriteLine("League spell timing helper running. Ctrl+Shift+V = type+copy+send timers. Ctrl+V = paste+send. In game: mouse back button = Enter. Clicks blocked during flow (mouse movement works).");
         while (true)
         {
             int device = interception_wait(ctx);
@@ -237,6 +259,7 @@ class InterceptionPaste
             {
                 KeyStroke stroke = new KeyStroke();
                 if (interception_receive(ctx, device, ref stroke, 1) <= 0) continue;
+                lastKbdDevice = device;
 
                 if (!GameFocused())
                 {
@@ -270,10 +293,12 @@ class InterceptionPaste
                             try
                             {
                                 if (typingFlag != null) typingFlag.Set();
+                                interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_CLICKS);
                                 DoTypeAndCopy(ctx, device);
                             }
                             finally
                             {
+                                interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_BACK);
                                 if (typingFlag != null) typingFlag.Reset();
                             }
                         }
@@ -284,10 +309,12 @@ class InterceptionPaste
                             try
                             {
                                 if (typingFlag != null) typingFlag.Set();
+                                interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_CLICKS);
                                 DoPaste(ctx, device);
                             }
                             finally
                             {
+                                interception_set_filter(ctx, interception_is_mouse, FILTER_MOUSE_BACK);
                                 if (typingFlag != null) typingFlag.Reset();
                             }
                         }
@@ -316,12 +343,24 @@ class InterceptionPaste
                 if (interception_receive(ctx, device, ref ms, 1) <= 0) continue;
                 if (FlagSet())
                 {
-                    // swallow mouse input while the flow is running
+                    // swallow clicks while the flow is running; movement is not
+                    // filtered, so the cursor still moves normally
+                    continue;
                 }
-                else
+                if ((ms.state & (MOUSE_BUTTON_4_DOWN | MOUSE_BUTTON_4_UP)) != 0)
                 {
-                    interception_send(ctx, device, ref ms, 1);
+                    if (GameFocused())
+                    {
+                        // back button acts as Enter in game
+                        if ((ms.state & MOUSE_BUTTON_4_DOWN) != 0) TapKey(ctx, lastKbdDevice, SC_ENTER);
+                    }
+                    else
+                    {
+                        interception_send(ctx, device, ref ms, 1);
+                    }
+                    continue;
                 }
+                interception_send(ctx, device, ref ms, 1);
             }
         }
     }
