@@ -11,7 +11,6 @@ Tracks enemy summoner spell (Flash) cooldowns in League of Legends and types the
 ## Features
 
 - **Flash-only tracking**: digits `1-5` record enemy Flash (slot auto-detected per champion). Hextech Flashtraption is treated as Flash. Re-recording a Flash that is still on cooldown shaves 10s off the timer instead of resetting it.
-- **Manual Flash timers**: `Enter → 12158 → Enter/Esc` sets the Flash timer for enemy 1 (top) to ready at 21:58 — for teammate pings or correcting the auto timer. Position (1-5) + MMSS; sub-10-minute times need a leading zero (`10530` = 05:30). Replaces the auto timer and overrides later records while active (custom timers are precision adjustments — a record neither shaves nor replaces them; once the custom timer expires, records work normally again).
 - **Use-time input**: `Enter → 1208ad → Enter/Esc` records that the enemy AD used Flash at 12:08 — the script adds Flash's cooldown (with that player's haste) and sets the ready time automatically. Abbreviations: `top`, `jg`, `mid`, `ad`, `sp`.
 - **Cosmic Insight toggle**: `Enter → 555 → Enter/Esc` in game chat toggles Cosmic Insight for the support (enemy 5); `111`-`555` toggle enemies 1-5 respectively. Toggling recomputes an active Flash timer for that enemy using the haste that was in effect when the Flash was recorded, so it shortens/lengthens immediately and buying Ionian after a Flash does not retroactively change the timer.
 - **Haste-aware cooldowns**: timers account for haste from Ionian Boots (+10), Crimson Lucidity (+20), and Cosmic Insight (+18).
@@ -33,7 +32,6 @@ Open chat with `Enter`, type one of the following, then close chat with `Enter` 
 | `jg` | Record the jungler's Flash (position words: `top`, `jg`, `mid`, `ad`, `sp`) |
 | `11` | Clear enemy 1's Flash and custom timers |
 | `555` | Toggle Cosmic Insight for enemy 5 (support) |
-| `12158` | Manual Flash timer: enemy 1 (top) ready at 21:58 |
 | `1208ad` | Enemy AD used Flash at 12:08 — ready time computed automatically |
 
 Multiple timers in one message: separate entries with spaces, e.g. `1208ad 1512jg` (any mix of the forms above). A message is only treated as a command if **every** word parses — if any word doesn't, the whole message is ignored, so normal chat like `did ad flash?` never triggers a record. Custom timers auto-expire once their ready time passes (removed from the display and the paste). The line is tracked in the background as an editable buffer, so corrections work naturally: `Backspace`/`Delete` and the arrow/`Home`/`End` keys move and edit the entry before you close chat. Any symbol that can't be part of a command (e.g. `?`, `.`) is kept as a placeholder that makes the message fail the all-or-nothing check, so punctuation still can't accidentally trigger a record — delete it and the command becomes valid again.

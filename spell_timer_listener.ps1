@@ -560,24 +560,6 @@ function Process-Token([string]$tok) {
                 Update-Clipboard
             }
         }
-    } elseif ($tok -match '^([1-5])(\d{4})$') {
-        $idx = [int]$Matches[1] - 1
-        $ctime = [int]$Matches[2]
-        $cm = [math]::Floor($ctime / 100)
-        $cs = $ctime % 100
-        if ($idx -lt $enemies.Count -and $cm -le 59 -and $cs -le 59) {
-            $p = $enemies[$idx]
-            $flashSlot = Get-FlashSlot $p
-            if ($flashSlot -gt 0) {
-                $key = "$($p.summonerName)|$flashSlot"
-                if ($spellState.ContainsKey($key)) { $spellState.Remove($key) }
-            }
-            $customTimers[$p.summonerName] = $cm * 60 + $cs
-            Add-Event ("{0} Flash timer set manually: ready {1:00}:{2:00}" -f $p.summonerName, $cm, $cs) -Color Cyan
-            Update-Clipboard
-        } else {
-            Add-Event ("Invalid custom timer: {0}" -f $tok) -Color DarkGray
-        }
     } else {
         Add-Event ("Unrecognized input: {0}" -f $tok) -Color DarkGray
     }
@@ -648,7 +630,7 @@ while ($true) {
             Add-Event "Waiting for game data..."
             try { Clear-Host } catch { }
 function Test-Token([string]$tok) {
-    return ($tok -match '^[1-5]$' -or $tok -match '^(top|jg|mid|ad|sp)$' -or $tok -match '^([1-5])\1\1$' -or $tok -match '^([1-5])\1$' -or $tok -match '^(\d{4})(top|jg|mid|ad|sp)$' -or $tok -match '^([1-5])(\d{4})$')
+    return ($tok -match '^[1-5]$' -or $tok -match '^(top|jg|mid|ad|sp)$' -or $tok -match '^([1-5])\1\1$' -or $tok -match '^([1-5])\1$' -or $tok -match '^(\d{4})(top|jg|mid|ad|sp)$')
 }
 
 Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
@@ -715,7 +697,7 @@ Write-Host "=== ENEMY FLASH TRACKER ===" -ForegroundColor Cyan
     try { Clear-Host } catch { }
     $gt = $data.gameData.gameTime
     Write-Host ("=== ENEMY FLASH TRACKER ===  time {0:0}:{1:00}" -f [math]::Floor($gt / 60), ($gt % 60)) -ForegroundColor Cyan
-    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 12158 = manual ready (pos+MMSS), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter/Esc  |  output: spell_timers.txt") -ForegroundColor DarkGray
+    Write-Host ("keys: 1-5 = enemy Flash, 11 = clear, 555 = cosmic (support), 1208ad = use time (auto CD), multi: 1208ad 1512jg, Q = quit  |  in-game: Ctrl+Shift+V = type+copy+send, Ctrl+V = paste+send, or Enter, digit(s), Enter/Esc  |  output: spell_timers.txt") -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,-3} {1,-8} {2,-14} {3,-24} {4}" -f "#", "POS", "CHAMP", "FLASH", "HASTE") -ForegroundColor DarkGray
     for ($i = 0; $i -lt $enemies.Count; $i++) {
